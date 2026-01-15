@@ -1,7 +1,13 @@
 import type { RouteInfo } from '../types/chat';
 
 export function parseRoute(): RouteInfo {
-  const pathname = window.location.pathname;
+  // Check if we were redirected from 404.html
+  const redirectPath = sessionStorage.getItem('redirect-path');
+  if (redirectPath) {
+    sessionStorage.removeItem('redirect-path');
+  }
+
+  const pathname = redirectPath || window.location.pathname;
   const basePath = '/keyboard/';
 
   const relativePath = pathname.startsWith(basePath)
@@ -14,7 +20,7 @@ export function parseRoute(): RouteInfo {
   if (segments.length >= 1) {
     return {
       conversationToken: decodeURIComponent(segments[0]),
-      username: null, // No longer in URL
+      username: null,
       isValid: true,
     };
   }
