@@ -34,7 +34,8 @@ export function useJsonBinChat(username: string) {
     setMessages(displayLines);
   }, []);
 
-  const fetchMessages = useCallback(async (): Promise<StoredMessage[] | null> => {
+  // Read messages from server without updating display
+  const readMessages = useCallback(async (): Promise<StoredMessage[] | null> => {
     if (!JSONBIN_API_KEY || !JSONBIN_BIN_ID) {
       console.error('JSONBin API key or Bin ID not configured');
       return null;
@@ -50,16 +51,23 @@ export function useJsonBinChat(username: string) {
       if (response.ok) {
         const data = await response.json();
         const binData = data.record as BinData;
-        const stored = binData?.messages || [];
-        messagesRef.current = stored;
-        updateDisplay();
-        return stored;
+        return binData?.messages || [];
       }
     } catch (e) {
       console.error('Fetch error:', e);
     }
     return null;
-  }, [updateDisplay]);
+  }, []);
+
+  // Fetch messages and update display
+  const fetchMessages = useCallback(async (): Promise<StoredMessage[] | null> => {
+    const stored = await readMessages();
+    if (stored) {
+      messagesRef.current = stored;
+      updateDisplay();
+    }
+    return stored;
+  }, [readMessages, updateDisplay]);
 
   const saveMessages = useCallback(async (newMessages: StoredMessage[]): Promise<boolean> => {
     if (!JSONBIN_API_KEY || !JSONBIN_BIN_ID) return false;
@@ -103,8 +111,8 @@ export function useJsonBinChat(username: string) {
     const MAX_RETRIES = 3;
 
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-      // Fetch current state
-      const currentMessages = await fetchMessages();
+      // Read current state (no display update)
+      const currentMessages = await readMessages();
       if (!currentMessages) {
         console.error('Failed to fetch current state');
         return;
@@ -123,8 +131,8 @@ export function useJsonBinChat(username: string) {
         return;
       }
 
-      // Verify: read back and check if our message exists
-      const verifyMessages = await fetchMessages();
+      // Verify: read back and check if our message exists (no display update)
+      const verifyMessages = await readMessages();
       if (!verifyMessages) {
         console.error('Failed to verify message');
         return;
@@ -132,6 +140,9 @@ export function useJsonBinChat(username: string) {
 
       const verified = verifyMessages.some(m => m.id === message.id);
       if (verified) {
+        // Success - now update display once
+        messagesRef.current = verifyMessages;
+        updateDisplay();
         return;
       }
 
@@ -140,7 +151,7 @@ export function useJsonBinChat(username: string) {
     }
 
     console.error('Failed to send message after max retries');
-  }, [username, fetchMessages, saveMessages]);
+  }, [username, readMessages, saveMessages, updateDisplay]);
 
   const myColor = getColorForUsername(username);
 
