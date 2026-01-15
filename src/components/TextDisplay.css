@@ -14,11 +14,20 @@
   display: flex;
   align-items: center;
   font-family: 'Frank Ruhl Libre', 'David Libre', 'Noto Sans Hebrew', serif;
-  font-size: clamp(1.5rem, 5vh, 4rem);
+  font-size: clamp(1.2rem, 4vh, 3rem);
   font-weight: 500;
   color: #ffffff;
   padding: 0 10px;
-  max-height: 25%;
+  max-height: calc(100% / 6);
+}
+
+.username {
+  font-weight: 700;
+  margin-inline-end: 0.5em;
+}
+
+.message {
+  color: #ffffff;
 }
 
 .cursor {

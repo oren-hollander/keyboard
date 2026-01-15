@@ -67,3 +67,24 @@
 .key-enter:hover {
   background-color: #ff6b6b;
 }
+
+.key-mode {
+  flex: 1.5;
+  max-width: 12%;
+}
+
+.key-mode.mode-write {
+  background-color: #2e7d32;
+}
+
+.key-mode.mode-write:hover {
+  background-color: #388e3c;
+}
+
+.key-mode.mode-chat {
+  background-color: #1565c0;
+}
+
+.key-mode.mode-chat:hover {
+  background-color: #1976d2;
+}

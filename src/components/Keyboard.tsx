@@ -13,14 +13,18 @@ const englishLayout = [
   ['Z', 'X', 'C', 'V', 'B', 'N', 'M'],
 ];
 
+type AppMode = 'write' | 'chat';
+
 interface KeyboardProps {
   onKeyPress: (key: string) => void;
   onBackspace: () => void;
   onEnter: () => void;
   onSpace: () => void;
+  mode?: AppMode;
+  onModeToggle?: () => void;
 }
 
-export function Keyboard({ onKeyPress, onBackspace, onEnter, onSpace }: KeyboardProps) {
+export function Keyboard({ onKeyPress, onBackspace, onEnter, onSpace, mode, onModeToggle }: KeyboardProps) {
   const layout = config.language === 'hebrew' ? hebrewLayout : englishLayout;
 
   return (
@@ -62,6 +66,14 @@ export function Keyboard({ onKeyPress, onBackspace, onEnter, onSpace }: Keyboard
         ))}
       </div>
       <div className="keyboard-row">
+        {onModeToggle && (
+          <button
+            className={`key key-mode ${mode === 'write' ? 'mode-write' : 'mode-chat'}`}
+            onClick={onModeToggle}
+          >
+            {mode === 'write' ? '💬' : '📝'}
+          </button>
+        )}
         <button className="key key-space" onClick={onSpace}>
           רווח
         </button>

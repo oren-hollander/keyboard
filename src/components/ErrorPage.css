@@ -1,0 +1,28 @@
+.error-page {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  color: white;
+  text-align: center;
+  padding: 2rem;
+}
+
+.error-page h1 {
+  margin-bottom: 1rem;
+  color: #E57373;
+}
+
+.error-page code {
+  background: #333;
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  font-family: monospace;
+  margin: 1rem 0;
+}
+
+.error-page .example {
+  color: #888;
+  font-size: 0.9rem;
+}

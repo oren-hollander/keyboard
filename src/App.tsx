@@ -1,9 +1,17 @@
 import { useState } from 'react';
 import { TextDisplay } from './components/TextDisplay';
 import { Keyboard } from './components/Keyboard';
+import { ErrorPage } from './components/ErrorPage';
+import { NameEntry } from './components/NameEntry';
+import { parseRoute } from './utils/routing';
+import { useJsonBinChat } from './hooks/useJsonBinChat';
 import './App.css';
 
-function App() {
+const STORAGE_KEY = 'keyboard-chat-username';
+
+type AppState = 'write' | 'entering-chat' | 'chat';
+
+function WritingRoom({ onModeToggle }: { onModeToggle: () => void }) {
   const [lines, setLines] = useState<string[]>([]);
   const [currentLine, setCurrentLine] = useState('');
 
@@ -19,7 +27,6 @@ function App() {
     if (currentLine.length > 0) {
       setCurrentLine((prev) => prev.slice(0, -1));
     } else if (lines.length > 0) {
-      // Move to previous line
       const lastLine = lines[lines.length - 1];
       setLines((prev) => prev.slice(0, -1));
       setCurrentLine(lastLine);
@@ -31,14 +38,130 @@ function App() {
     setCurrentLine('');
   };
 
+  const displayLines = lines.map((text, index) => ({
+    id: `line-${index}`,
+    username: '',
+    text,
+    color: '#ffffff',
+  }));
+
   return (
-    <div className="app">
-      <TextDisplay lines={lines} currentLine={currentLine} />
+    <>
+      <TextDisplay
+        lines={displayLines}
+        currentLine={currentLine}
+        currentUsername=""
+        currentColor="#ffffff"
+      />
       <Keyboard
         onKeyPress={handleKeyPress}
         onBackspace={handleBackspace}
         onEnter={handleEnter}
         onSpace={handleSpace}
+        mode="write"
+        onModeToggle={onModeToggle}
+      />
+    </>
+  );
+}
+
+function ChatRoom({
+  conversationToken,
+  username,
+  onModeToggle,
+}: {
+  conversationToken: string;
+  username: string;
+  onModeToggle: () => void;
+}) {
+  const [currentLine, setCurrentLine] = useState('');
+  const { messages, sendMessage, myColor } = useJsonBinChat(conversationToken, username);
+
+  const handleKeyPress = (key: string) => {
+    setCurrentLine((prev) => prev + key);
+  };
+
+  const handleSpace = () => {
+    setCurrentLine((prev) => prev + ' ');
+  };
+
+  const handleBackspace = () => {
+    if (currentLine.length > 0) {
+      setCurrentLine((prev) => prev.slice(0, -1));
+    }
+  };
+
+  const handleEnter = () => {
+    if (currentLine.trim()) {
+      sendMessage(currentLine);
+      setCurrentLine('');
+    }
+  };
+
+  return (
+    <>
+      <TextDisplay
+        lines={messages}
+        currentLine={currentLine}
+        currentUsername={username}
+        currentColor={myColor}
+      />
+      <Keyboard
+        onKeyPress={handleKeyPress}
+        onBackspace={handleBackspace}
+        onEnter={handleEnter}
+        onSpace={handleSpace}
+        mode="chat"
+        onModeToggle={onModeToggle}
+      />
+    </>
+  );
+}
+
+function App() {
+  const route = parseRoute();
+  const [appState, setAppState] = useState<AppState>('write');
+  const [username, setUsername] = useState<string>('');
+
+  // Invalid URL - no conversation token
+  if (!route.isValid || !route.conversationToken) {
+    return <ErrorPage />;
+  }
+
+  // Writing mode
+  if (appState === 'write') {
+    return (
+      <div className="app">
+        <WritingRoom onModeToggle={() => setAppState('entering-chat')} />
+      </div>
+    );
+  }
+
+  // Entering chat - show name entry only if no username set this session
+  if (appState === 'entering-chat') {
+    if (username) {
+      // Already entered name this session, go straight to chat
+      setAppState('chat');
+      return null;
+    }
+    return (
+      <NameEntry
+        onNameSubmit={(name) => {
+          localStorage.setItem(STORAGE_KEY, name);
+          setUsername(name);
+          setAppState('chat');
+        }}
+      />
+    );
+  }
+
+  // Chat mode
+  return (
+    <div className="app">
+      <ChatRoom
+        conversationToken={route.conversationToken}
+        username={username}
+        onModeToggle={() => setAppState('write')}
       />
     </div>
   );
