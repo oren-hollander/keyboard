@@ -20,6 +20,7 @@ interface BinData {
 
 export function useJsonBinChat(username: string) {
   const [messages, setMessages] = useState<DisplayLine[]>([]);
+  const [sending, setSending] = useState(false);
   const messagesRef = useRef<StoredMessage[]>([]);
 
   const updateDisplay = useCallback(() => {
@@ -101,6 +102,8 @@ export function useJsonBinChat(username: string) {
   const sendMessage = useCallback(async (text: string) => {
     if (!text.trim()) return;
 
+    setSending(true);
+
     const message: StoredMessage = {
       id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       username,
@@ -110,48 +113,50 @@ export function useJsonBinChat(username: string) {
 
     const MAX_RETRIES = 3;
 
-    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-      // Read current state (no display update)
-      const currentMessages = await readMessages();
-      if (!currentMessages) {
-        console.error('Failed to fetch current state');
-        return;
+    try {
+      for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+        // Read current state (no display update)
+        const currentMessages = await readMessages();
+        if (!currentMessages) {
+          console.error('Failed to fetch current state');
+          return;
+        }
+
+        // Merge: add our message if not already there
+        const messageExists = currentMessages.some(m => m.id === message.id);
+        const mergedMessages = messageExists
+          ? currentMessages
+          : [...currentMessages, message];
+
+        // Save to jsonbin
+        const saved = await saveMessages(mergedMessages);
+        if (!saved) {
+          console.error('Failed to save messages');
+          return;
+        }
+
+        // Verify: read back and check if our message exists (no display update)
+        const verifyMessages = await readMessages();
+        if (!verifyMessages) {
+          console.error('Failed to verify message');
+          return;
+        }
+
+        const verified = verifyMessages.some(m => m.id === message.id);
+        if (verified) {
+          // Success - polling will update display
+          return;
+        }
+
+        // Message not found - conflict detected, retry
+        console.warn(`Write conflict detected (attempt ${attempt + 1}/${MAX_RETRIES}), retrying...`);
       }
 
-      // Merge: add our message if not already there
-      const messageExists = currentMessages.some(m => m.id === message.id);
-      const mergedMessages = messageExists
-        ? currentMessages
-        : [...currentMessages, message];
-
-      // Save to jsonbin
-      const saved = await saveMessages(mergedMessages);
-      if (!saved) {
-        console.error('Failed to save messages');
-        return;
-      }
-
-      // Verify: read back and check if our message exists (no display update)
-      const verifyMessages = await readMessages();
-      if (!verifyMessages) {
-        console.error('Failed to verify message');
-        return;
-      }
-
-      const verified = verifyMessages.some(m => m.id === message.id);
-      if (verified) {
-        // Success - now update display once
-        messagesRef.current = verifyMessages;
-        updateDisplay();
-        return;
-      }
-
-      // Message not found - conflict detected, retry
-      console.warn(`Write conflict detected (attempt ${attempt + 1}/${MAX_RETRIES}), retrying...`);
+      console.error('Failed to send message after max retries');
+    } finally {
+      setSending(false);
     }
-
-    console.error('Failed to send message after max retries');
-  }, [username, readMessages, saveMessages, updateDisplay]);
+  }, [username, readMessages, saveMessages]);
 
   const myColor = getColorForUsername(username);
 
@@ -160,5 +165,6 @@ export function useJsonBinChat(username: string) {
     sendMessage,
     myColor,
     fetchMessages,
+    sending,
   };
 }

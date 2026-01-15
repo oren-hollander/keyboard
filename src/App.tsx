@@ -87,7 +87,7 @@ function ChatRoom({
   onModeToggle: () => void;
 }) {
   const [currentLine, setCurrentLine] = useState('');
-  const { messages, sendMessage, myColor, fetchMessages } = useJsonBinChat(username);
+  const { messages, sendMessage, myColor, fetchMessages, sending } = useJsonBinChat(username);
 
   // Fetch messages immediately when entering chat mode
   useEffect(() => {
@@ -95,20 +95,24 @@ function ChatRoom({
   }, [fetchMessages]);
 
   const handleKeyPress = (key: string) => {
+    if (sending) return;
     setCurrentLine((prev) => prev + key);
   };
 
   const handleSpace = () => {
+    if (sending) return;
     setCurrentLine((prev) => prev + ' ');
   };
 
   const handleBackspace = () => {
+    if (sending) return;
     if (currentLine.length > 0) {
       setCurrentLine((prev) => prev.slice(0, -1));
     }
   };
 
   const handleEnter = () => {
+    if (sending) return;
     if (currentLine.trim()) {
       sendMessage(currentLine);
       setCurrentLine('');
@@ -122,6 +126,7 @@ function ChatRoom({
         currentLine={currentLine}
         currentUsername={username}
         currentColor={myColor}
+        muted={sending}
       />
       <Keyboard
         onKeyPress={handleKeyPress}

@@ -7,9 +7,10 @@ interface TextDisplayProps {
   currentLine: string;
   currentUsername: string;
   currentColor: string;
+  muted?: boolean;
 }
 
-export function TextDisplay({ lines, currentLine, currentUsername, currentColor }: TextDisplayProps) {
+export function TextDisplay({ lines, currentLine, currentUsername, currentColor, muted }: TextDisplayProps) {
   const isRTL = config.language === 'hebrew';
   const isChatMode = currentUsername !== '';
 
@@ -33,12 +34,12 @@ export function TextDisplay({ lines, currentLine, currentUsername, currentColor 
         </div>
       ))}
 
-      <div className="text-line current-line">
+      <div className={`text-line current-line${muted ? ' muted' : ''}`}>
         {isChatMode && (
-          <span className="username" style={{ color: currentColor }}>{currentUsername}:</span>
+          <span className="username" style={{ color: currentColor, opacity: muted ? 0.4 : 1 }}>{currentUsername}:</span>
         )}
-        <span className="message">{currentLine}</span>
-        <span className="cursor" />
+        <span className="message" style={{ opacity: muted ? 0.4 : 1 }}>{currentLine}</span>
+        <span className="cursor" style={{ opacity: muted ? 0.4 : 1 }} />
       </div>
     </div>
   );
