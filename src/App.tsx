@@ -1,13 +1,12 @@
 import { useState } from 'react';
 import { TextDisplay } from './components/TextDisplay';
 import { Keyboard } from './components/Keyboard';
-import { ErrorPage } from './components/ErrorPage';
 import { NameEntry } from './components/NameEntry';
-import { parseRoute } from './utils/routing';
 import { useJsonBinChat } from './hooks/useJsonBinChat';
 import './App.css';
 
 const STORAGE_KEY = 'keyboard-chat-username';
+const CONVERSATION_TOKEN = 'demo';
 
 type AppState = 'write' | 'entering-chat' | 'chat';
 
@@ -66,16 +65,14 @@ function WritingRoom({ onModeToggle }: { onModeToggle: () => void }) {
 }
 
 function ChatRoom({
-  conversationToken,
   username,
   onModeToggle,
 }: {
-  conversationToken: string;
   username: string;
   onModeToggle: () => void;
 }) {
   const [currentLine, setCurrentLine] = useState('');
-  const { messages, sendMessage, myColor } = useJsonBinChat(conversationToken, username);
+  const { messages, sendMessage, myColor } = useJsonBinChat(CONVERSATION_TOKEN, username);
 
   const handleKeyPress = (key: string) => {
     setCurrentLine((prev) => prev + key);
@@ -119,14 +116,8 @@ function ChatRoom({
 }
 
 function App() {
-  const route = parseRoute();
   const [appState, setAppState] = useState<AppState>('write');
   const [username, setUsername] = useState<string>('');
-
-  // Invalid URL - no conversation token
-  if (!route.isValid || !route.conversationToken) {
-    return <ErrorPage />;
-  }
 
   // Writing mode
   if (appState === 'write') {
@@ -140,7 +131,6 @@ function App() {
   // Entering chat - show name entry only if no username set this session
   if (appState === 'entering-chat') {
     if (username) {
-      // Already entered name this session, go straight to chat
       setAppState('chat');
       return null;
     }
@@ -159,7 +149,6 @@ function App() {
   return (
     <div className="app">
       <ChatRoom
-        conversationToken={route.conversationToken}
         username={username}
         onModeToggle={() => setAppState('write')}
       />

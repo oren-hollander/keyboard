@@ -11,9 +11,3 @@ export interface DisplayLine {
   text: string;
   color: string;
 }
-
-export interface RouteInfo {
-  conversationToken: string | null;
-  username: string | null;
-  isValid: boolean;
-}
