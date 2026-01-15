@@ -1,25 +1,12 @@
 import type { RouteInfo } from '../types/chat';
 
 export function parseRoute(): RouteInfo {
-  // Check if we were redirected from 404.html
-  const redirectPath = sessionStorage.getItem('redirect-path');
-  if (redirectPath) {
-    sessionStorage.removeItem('redirect-path');
-  }
+  // Use hash-based routing: /keyboard/#test123
+  const hash = window.location.hash.slice(1); // Remove the #
 
-  const pathname = redirectPath || window.location.pathname;
-  const basePath = '/keyboard/';
-
-  const relativePath = pathname.startsWith(basePath)
-    ? pathname.slice(basePath.length)
-    : pathname.slice(1);
-
-  const segments = relativePath.split('/').filter(Boolean);
-
-  // Only need conversation token now (username comes from localStorage)
-  if (segments.length >= 1) {
+  if (hash) {
     return {
-      conversationToken: decodeURIComponent(segments[0]),
+      conversationToken: decodeURIComponent(hash),
       username: null,
       isValid: true,
     };
