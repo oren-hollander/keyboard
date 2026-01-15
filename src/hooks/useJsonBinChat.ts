@@ -3,12 +3,8 @@ import type {DisplayLine} from '../types/chat';
 import {getColorForUsername} from '../utils/colors';
 import {config} from '../config';
 
-// You need to set these:
-// 1. Get API key from https://jsonbin.io/api-keys
-// 2. Create a bin and get its ID
 const JSONBIN_API_KEY = '$2a$10$n8bSMU9E.DgQwr.KOj86fedVsb8WQUxAmbvGIELPy8zkNcQK81s7i';
 const JSONBIN_BIN_ID = '6969224c43b1c97be932ca0a';
-
 const JSONBIN_URL = `https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}`;
 
 interface StoredMessage {
@@ -18,7 +14,11 @@ interface StoredMessage {
   timestamp: number;
 }
 
-export function useJsonBinChat(conversationToken: string, username: string) {
+interface BinData {
+  messages: StoredMessage[];
+}
+
+export function useJsonBinChat(username: string) {
   const [messages, setMessages] = useState<DisplayLine[]>([]);
   const messagesRef = useRef<StoredMessage[]>([]);
 
@@ -34,11 +34,10 @@ export function useJsonBinChat(conversationToken: string, username: string) {
     setMessages(displayLines);
   }, []);
 
-  // Fetch messages from jsonbin
-  const fetchMessages = useCallback(async () => {
+  const fetchMessages = useCallback(async (): Promise<StoredMessage[] | null> => {
     if (!JSONBIN_API_KEY || !JSONBIN_BIN_ID) {
       console.error('JSONBin API key or Bin ID not configured');
-      return;
+      return null;
     }
 
     try {
@@ -50,60 +49,40 @@ export function useJsonBinChat(conversationToken: string, username: string) {
 
       if (response.ok) {
         const data = await response.json();
-        messagesRef.current = data.record?.[conversationToken] || [];
+        const binData = data.record as BinData;
+        const stored = binData?.messages || [];
+        messagesRef.current = stored;
         updateDisplay();
+        return stored;
       }
     } catch (e) {
       console.error('Fetch error:', e);
     }
-  }, [conversationToken, updateDisplay]);
-
-  // Fetch current state from jsonbin (returns messages for our conversation)
-  const fetchCurrentState = useCallback(async (): Promise<{ allData: Record<string, StoredMessage[]>, ourMessages: StoredMessage[] } | null> => {
-    if (!JSONBIN_API_KEY || !JSONBIN_BIN_ID) return null;
-
-    try {
-      const response = await fetch(JSONBIN_URL, {
-        headers: {
-          'X-Access-Key': JSONBIN_API_KEY,
-        },
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        const allData = data.record || {};
-        const ourMessages = allData[conversationToken] || [];
-        return { allData, ourMessages };
-      }
-    } catch (e) {
-      console.error('Fetch current state error:', e);
-    }
     return null;
-  }, [conversationToken]);
+  }, [updateDisplay]);
 
-  // Save messages to jsonbin
-  const saveMessages = useCallback(async (allData: Record<string, StoredMessage[]>, newMessages: StoredMessage[]) => {
+  const saveMessages = useCallback(async (newMessages: StoredMessage[]): Promise<boolean> => {
     if (!JSONBIN_API_KEY || !JSONBIN_BIN_ID) return false;
 
     try {
-      // Update our conversation with storage buffer size limit
-      allData[conversationToken] = newMessages.slice(-config.storageBufferSize);
+      const binData: BinData = {
+        messages: newMessages.slice(-config.storageBufferSize),
+      };
 
-      // Save back
       const response = await fetch(JSONBIN_URL, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
           'X-Access-Key': JSONBIN_API_KEY,
         },
-        body: JSON.stringify(allData),
+        body: JSON.stringify(binData),
       });
       return response.ok;
     } catch (e) {
       console.error('Save error:', e);
       return false;
     }
-  }, [conversationToken]);
+  }, []);
 
   useEffect(() => {
     fetchMessages();
@@ -125,37 +104,34 @@ export function useJsonBinChat(conversationToken: string, username: string) {
 
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
       // Fetch current state
-      const state = await fetchCurrentState();
-      if (!state) {
+      const currentMessages = await fetchMessages();
+      if (!currentMessages) {
         console.error('Failed to fetch current state');
         return;
       }
 
-      // Merge: add our message to current messages (if not already there)
-      const messageExists = state.ourMessages.some(m => m.id === message.id);
+      // Merge: add our message if not already there
+      const messageExists = currentMessages.some(m => m.id === message.id);
       const mergedMessages = messageExists
-        ? state.ourMessages
-        : [...state.ourMessages, message];
+        ? currentMessages
+        : [...currentMessages, message];
 
       // Save to jsonbin
-      const saved = await saveMessages(state.allData, mergedMessages);
+      const saved = await saveMessages(mergedMessages);
       if (!saved) {
         console.error('Failed to save messages');
         return;
       }
 
       // Verify: read back and check if our message exists
-      const verifyState = await fetchCurrentState();
-      if (!verifyState) {
+      const verifyMessages = await fetchMessages();
+      if (!verifyMessages) {
         console.error('Failed to verify message');
         return;
       }
 
-      const verified = verifyState.ourMessages.some(m => m.id === message.id);
+      const verified = verifyMessages.some(m => m.id === message.id);
       if (verified) {
-        // Success - update local state with server state
-        messagesRef.current = verifyState.ourMessages;
-        updateDisplay();
         return;
       }
 
@@ -164,7 +140,7 @@ export function useJsonBinChat(conversationToken: string, username: string) {
     }
 
     console.error('Failed to send message after max retries');
-  }, [username, updateDisplay, fetchCurrentState, saveMessages]);
+  }, [username, fetchMessages, saveMessages]);
 
   const myColor = getColorForUsername(username);
 

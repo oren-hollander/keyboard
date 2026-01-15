@@ -6,7 +6,6 @@ import { useJsonBinChat } from './hooks/useJsonBinChat';
 import './App.css';
 
 const STORAGE_KEY = 'keyboard-chat-username';
-const CONVERSATION_TOKEN = 'demo';
 
 type AppState = 'write' | 'entering-chat' | 'chat';
 
@@ -88,7 +87,7 @@ function ChatRoom({
   onModeToggle: () => void;
 }) {
   const [currentLine, setCurrentLine] = useState('');
-  const { messages, sendMessage, myColor, fetchMessages } = useJsonBinChat(CONVERSATION_TOKEN, username);
+  const { messages, sendMessage, myColor, fetchMessages } = useJsonBinChat(username);
 
   // Fetch messages immediately when entering chat mode
   useEffect(() => {
