@@ -9,19 +9,21 @@ const JSONBIN_URL = `https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}`;
 
 interface StoredMessage {
   id: string;
-  username: string;
   text: string;
   timestamp: number;
 }
 
-interface BinData {
-  messages: StoredMessage[];
+interface DisplayMessage extends StoredMessage {
+  username: string;
 }
+
+// User-keyed structure: { "alice": [...], "bob": [...] }
+type BinData = Record<string, StoredMessage[]>;
 
 export function useJsonBinChat(username: string) {
   const [messages, setMessages] = useState<DisplayLine[]>([]);
   const [sending, setSending] = useState(false);
-  const messagesRef = useRef<StoredMessage[]>([]);
+  const messagesRef = useRef<DisplayMessage[]>([]);
 
   const updateDisplay = useCallback(() => {
     const displayLines = messagesRef.current
@@ -35,8 +37,8 @@ export function useJsonBinChat(username: string) {
     setMessages(displayLines);
   }, []);
 
-  // Read messages from server without updating display
-  const readMessages = useCallback(async (): Promise<StoredMessage[] | null> => {
+  // Read raw bin data (user-keyed structure)
+  const readBin = useCallback(async (): Promise<BinData | null> => {
     if (!JSONBIN_API_KEY || !JSONBIN_BIN_ID) {
       console.error('JSONBin API key or Bin ID not configured');
       return null;
@@ -51,8 +53,7 @@ export function useJsonBinChat(username: string) {
 
       if (response.ok) {
         const data = await response.json();
-        const binData = data.record as BinData;
-        return binData?.messages || [];
+        return (data.record as BinData) || {};
       }
     } catch (e) {
       console.error('Fetch error:', e);
@@ -60,24 +61,31 @@ export function useJsonBinChat(username: string) {
     return null;
   }, []);
 
+  // Flatten user-keyed data into sorted array with usernames
+  const flattenMessages = useCallback((binData: BinData): DisplayMessage[] => {
+    const allMessages: DisplayMessage[] = [];
+    for (const [user, msgs] of Object.entries(binData)) {
+      for (const msg of msgs) {
+        allMessages.push({ ...msg, username: user });
+      }
+    }
+    return allMessages.sort((a, b) => a.timestamp - b.timestamp);
+  }, []);
+
   // Fetch messages and update display
-  const fetchMessages = useCallback(async (): Promise<StoredMessage[] | null> => {
-    const stored = await readMessages();
-    if (stored) {
-      messagesRef.current = stored;
+  const fetchMessages = useCallback(async () => {
+    const binData = await readBin();
+    if (binData) {
+      messagesRef.current = flattenMessages(binData);
       updateDisplay();
     }
-    return stored;
-  }, [readMessages, updateDisplay]);
+  }, [readBin, flattenMessages, updateDisplay]);
 
-  const saveMessages = useCallback(async (newMessages: StoredMessage[]): Promise<boolean> => {
+  // Save bin data (user-keyed structure)
+  const saveBin = useCallback(async (binData: BinData): Promise<boolean> => {
     if (!JSONBIN_API_KEY || !JSONBIN_BIN_ID) return false;
 
     try {
-      const binData: BinData = {
-        messages: newMessages.slice(-config.storageBufferSize),
-      };
-
       const response = await fetch(JSONBIN_URL, {
         method: 'PUT',
         headers: {
@@ -99,6 +107,39 @@ export function useJsonBinChat(username: string) {
     return () => clearInterval(pollInterval);
   }, [fetchMessages]);
 
+  // Cleanup: keep only the latest N messages globally
+  const runCleanup = useCallback(async () => {
+    const binData = await readBin();
+    if (!binData) return;
+
+    // Flatten all messages with usernames
+    const allMessages = flattenMessages(binData);
+
+    // Keep only the latest maxVisibleLines messages
+    const maxMessages = config.maxVisibleLines;
+    if (allMessages.length <= maxMessages) return; // No cleanup needed
+
+    const messagesToKeep = allMessages.slice(-maxMessages);
+
+    // Rebuild user-keyed structure with only kept messages
+    const cleanedBin: BinData = {};
+    for (const msg of messagesToKeep) {
+      const { username: user, ...storedMsg } = msg;
+      if (!cleanedBin[user]) {
+        cleanedBin[user] = [];
+      }
+      cleanedBin[user].push(storedMsg);
+    }
+
+    await saveBin(cleanedBin);
+  }, [readBin, flattenMessages, saveBin]);
+
+  // Run cleanup every 5 seconds
+  useEffect(() => {
+    const cleanupInterval = setInterval(runCleanup, 5000);
+    return () => clearInterval(cleanupInterval);
+  }, [runCleanup]);
+
   const sendMessage = useCallback(async (text: string) => {
     if (!text.trim()) return;
 
@@ -106,7 +147,6 @@ export function useJsonBinChat(username: string) {
 
     const message: StoredMessage = {
       id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      username,
       text: text.trim(),
       timestamp: Date.now(),
     };
@@ -115,34 +155,41 @@ export function useJsonBinChat(username: string) {
 
     try {
       for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-        // Read current state (no display update)
-        const currentMessages = await readMessages();
-        if (!currentMessages) {
+        // Read current bin (user-keyed structure)
+        const currentBin = await readBin();
+        if (!currentBin) {
           console.error('Failed to fetch current state');
           return;
         }
 
-        // Merge: add our message if not already there
-        const messageExists = currentMessages.some(m => m.id === message.id);
-        const mergedMessages = messageExists
-          ? currentMessages
-          : [...currentMessages, message];
+        // Get my messages array
+        const myMessages = currentBin[username] || [];
 
-        // Save to jsonbin
-        const saved = await saveMessages(mergedMessages);
-        if (!saved) {
-          console.error('Failed to save messages');
-          return;
+        // Check if message already exists
+        const messageExists = myMessages.some(m => m.id === message.id);
+        if (!messageExists) {
+          // Append to my array, preserve other users' data
+          const updatedBin: BinData = {
+            ...currentBin,
+            [username]: [...myMessages, message],
+          };
+
+          // Save to jsonbin
+          const saved = await saveBin(updatedBin);
+          if (!saved) {
+            console.error('Failed to save messages');
+            return;
+          }
         }
 
-        // Verify: read back and check if our message exists (no display update)
-        const verifyMessages = await readMessages();
-        if (!verifyMessages) {
+        // Verify: read back and check if our message exists in our array
+        const verifyBin = await readBin();
+        if (!verifyBin) {
           console.error('Failed to verify message');
           return;
         }
 
-        const verified = verifyMessages.some(m => m.id === message.id);
+        const verified = (verifyBin[username] || []).some(m => m.id === message.id);
         if (verified) {
           // Success - polling will update display
           return;
@@ -156,7 +203,7 @@ export function useJsonBinChat(username: string) {
     } finally {
       setSending(false);
     }
-  }, [username, readMessages, saveMessages]);
+  }, [username, readBin, saveBin]);
 
   const myColor = getColorForUsername(username);
 
