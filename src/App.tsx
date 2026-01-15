@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { TextDisplay } from './components/TextDisplay';
 import { Keyboard } from './components/Keyboard';
 import { NameEntry } from './components/NameEntry';
@@ -10,31 +10,47 @@ const CONVERSATION_TOKEN = 'demo';
 
 type AppState = 'write' | 'entering-chat' | 'chat';
 
-function WritingRoom({ onModeToggle }: { onModeToggle: () => void }) {
-  const [lines, setLines] = useState<string[]>([]);
-  const [currentLine, setCurrentLine] = useState('');
+interface WriteState {
+  lines: string[];
+  currentLine: string;
+}
+
+function WritingRoom({
+  writeState,
+  setWriteState,
+  onModeToggle,
+}: {
+  writeState: WriteState;
+  setWriteState: React.Dispatch<React.SetStateAction<WriteState>>;
+  onModeToggle: () => void;
+}) {
+  const { lines, currentLine } = writeState;
 
   const handleKeyPress = (key: string) => {
-    setCurrentLine((prev) => prev + key);
+    setWriteState((prev) => ({ ...prev, currentLine: prev.currentLine + key }));
   };
 
   const handleSpace = () => {
-    setCurrentLine((prev) => prev + ' ');
+    setWriteState((prev) => ({ ...prev, currentLine: prev.currentLine + ' ' }));
   };
 
   const handleBackspace = () => {
     if (currentLine.length > 0) {
-      setCurrentLine((prev) => prev.slice(0, -1));
+      setWriteState((prev) => ({ ...prev, currentLine: prev.currentLine.slice(0, -1) }));
     } else if (lines.length > 0) {
       const lastLine = lines[lines.length - 1];
-      setLines((prev) => prev.slice(0, -1));
-      setCurrentLine(lastLine);
+      setWriteState((prev) => ({
+        lines: prev.lines.slice(0, -1),
+        currentLine: lastLine,
+      }));
     }
   };
 
   const handleEnter = () => {
-    setLines((prev) => [...prev, currentLine]);
-    setCurrentLine('');
+    setWriteState((prev) => ({
+      lines: [...prev.lines, prev.currentLine],
+      currentLine: '',
+    }));
   };
 
   const displayLines = lines.map((text, index) => ({
@@ -72,7 +88,12 @@ function ChatRoom({
   onModeToggle: () => void;
 }) {
   const [currentLine, setCurrentLine] = useState('');
-  const { messages, sendMessage, myColor } = useJsonBinChat(CONVERSATION_TOKEN, username);
+  const { messages, sendMessage, myColor, fetchMessages } = useJsonBinChat(CONVERSATION_TOKEN, username);
+
+  // Fetch messages immediately when entering chat mode
+  useEffect(() => {
+    fetchMessages();
+  }, [fetchMessages]);
 
   const handleKeyPress = (key: string) => {
     setCurrentLine((prev) => prev + key);
@@ -118,12 +139,17 @@ function ChatRoom({
 function App() {
   const [appState, setAppState] = useState<AppState>('write');
   const [username, setUsername] = useState<string>('');
+  const [writeState, setWriteState] = useState<WriteState>({ lines: [], currentLine: '' });
 
   // Writing mode
   if (appState === 'write') {
     return (
       <div className="app">
-        <WritingRoom onModeToggle={() => setAppState('entering-chat')} />
+        <WritingRoom
+          writeState={writeState}
+          setWriteState={setWriteState}
+          onModeToggle={() => setAppState('entering-chat')}
+        />
       </div>
     );
   }
