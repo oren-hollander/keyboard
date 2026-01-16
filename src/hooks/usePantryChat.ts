@@ -1,11 +1,8 @@
-import {useCallback, useEffect, useRef, useState} from 'react';
-import type {DisplayLine} from '../types/chat';
-import {getColorForUsername} from '../utils/colors';
-import {config} from '../config';
-
-const JSONBIN_API_KEY = '$2a$10$n8bSMU9E.DgQwr.KOj86fedVsb8WQUxAmbvGIELPy8zkNcQK81s7i';
-const JSONBIN_BIN_ID = '6969224c43b1c97be932ca0a';
-const JSONBIN_URL = `https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}`;
+import { useCallback, useEffect, useRef, useState } from 'react';
+import type { DisplayLine } from '../types/chat';
+import { getColorForUsername } from '../utils/colors';
+import { config } from '../config';
+import { pantryService, type BasketData } from '../services/pantryService';
 
 interface StoredMessage {
   id: string;
@@ -17,10 +14,7 @@ interface DisplayMessage extends StoredMessage {
   username: string;
 }
 
-// User-keyed structure: { "alice": [...], "bob": [...] }
-type BinData = Record<string, StoredMessage[]>;
-
-export function useJsonBinChat(username: string) {
+export function usePantryChat(username: string) {
   const [messages, setMessages] = useState<DisplayLine[]>([]);
   const [sending, setSending] = useState(false);
   const messagesRef = useRef<DisplayMessage[]>([]);
@@ -37,36 +31,17 @@ export function useJsonBinChat(username: string) {
     setMessages(displayLines);
   }, []);
 
-  // Read raw bin data (user-keyed structure)
-  const readBin = useCallback(async (): Promise<BinData | null> => {
-    if (!JSONBIN_API_KEY || !JSONBIN_BIN_ID) {
-      console.error('JSONBin API key or Bin ID not configured');
-      return null;
-    }
-
-    try {
-      const response = await fetch(JSONBIN_URL, {
-        headers: {
-          'X-Access-Key': JSONBIN_API_KEY,
-        },
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        return (data.record as BinData) || {};
-      }
-    } catch (e) {
-      console.error('Fetch error:', e);
-    }
-    return null;
-  }, []);
-
   // Flatten user-keyed data into sorted array with usernames
-  const flattenMessages = useCallback((binData: BinData): DisplayMessage[] => {
+  const flattenMessages = useCallback((basketData: BasketData): DisplayMessage[] => {
     const allMessages: DisplayMessage[] = [];
-    for (const [user, msgs] of Object.entries(binData)) {
+    for (const [user, msgs] of Object.entries(basketData)) {
+      // Skip entries that aren't valid message arrays
+      if (!Array.isArray(msgs)) continue;
       for (const msg of msgs) {
-        allMessages.push({ ...msg, username: user });
+        // Validate message structure
+        if (msg) {
+          allMessages.push({ ...msg, username: user });
+        }
       }
     }
     return allMessages.sort((a, b) => a.timestamp - b.timestamp);
@@ -74,46 +49,26 @@ export function useJsonBinChat(username: string) {
 
   // Fetch messages and update display
   const fetchMessages = useCallback(async () => {
-    const binData = await readBin();
-    if (binData) {
-      messagesRef.current = flattenMessages(binData);
+    const basketData = await pantryService.readBasket();
+    if (basketData) {
+      messagesRef.current = flattenMessages(basketData);
       updateDisplay();
     }
-  }, [readBin, flattenMessages, updateDisplay]);
-
-  // Save bin data (user-keyed structure)
-  const saveBin = useCallback(async (binData: BinData): Promise<boolean> => {
-    if (!JSONBIN_API_KEY || !JSONBIN_BIN_ID) return false;
-
-    try {
-      const response = await fetch(JSONBIN_URL, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Access-Key': JSONBIN_API_KEY,
-        },
-        body: JSON.stringify(binData),
-      });
-      return response.ok;
-    } catch (e) {
-      console.error('Save error:', e);
-      return false;
-    }
-  }, []);
+  }, [flattenMessages, updateDisplay]);
 
   useEffect(() => {
     fetchMessages();
-    const pollInterval = setInterval(fetchMessages, 1000);
+    const pollInterval = setInterval(fetchMessages, config.polling.interval);
     return () => clearInterval(pollInterval);
   }, [fetchMessages]);
 
   // Cleanup: keep only the latest N messages globally
   const runCleanup = useCallback(async () => {
-    const binData = await readBin();
-    if (!binData) return;
+    const basketData = await pantryService.readBasket();
+    if (!basketData) return;
 
     // Flatten all messages with usernames
-    const allMessages = flattenMessages(binData);
+    const allMessages = flattenMessages(basketData);
 
     // Keep only the latest maxVisibleLines messages
     const maxMessages = config.maxVisibleLines;
@@ -122,21 +77,21 @@ export function useJsonBinChat(username: string) {
     const messagesToKeep = allMessages.slice(-maxMessages);
 
     // Rebuild user-keyed structure with only kept messages
-    const cleanedBin: BinData = {};
+    const cleanedBasket: BasketData = {};
     for (const msg of messagesToKeep) {
       const { username: user, ...storedMsg } = msg;
-      if (!cleanedBin[user]) {
-        cleanedBin[user] = [];
+      if (!cleanedBasket[user]) {
+        cleanedBasket[user] = [];
       }
-      cleanedBin[user].push(storedMsg);
+      cleanedBasket[user].push(storedMsg);
     }
 
-    await saveBin(cleanedBin);
-  }, [readBin, flattenMessages, saveBin]);
+    await pantryService.replaceBasket(cleanedBasket);
+  }, [flattenMessages]);
 
-  // Run cleanup every 5 seconds
+  // Run cleanup at configured interval
   useEffect(() => {
-    const cleanupInterval = setInterval(runCleanup, 5000);
+    const cleanupInterval = setInterval(runCleanup, config.polling.cleanupInterval);
     return () => clearInterval(cleanupInterval);
   }, [runCleanup]);
 
@@ -155,27 +110,26 @@ export function useJsonBinChat(username: string) {
 
     try {
       for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-        // Read current bin (user-keyed structure)
-        const currentBin = await readBin();
-        if (!currentBin) {
+        // Read current basket (user-keyed structure)
+        const currentBasket = await pantryService.readBasket();
+        if (!currentBasket) {
           console.error('Failed to fetch current state');
           return;
         }
 
-        // Get my messages array
-        const myMessages = currentBin[username] || [];
+        // Get my messages array (validate it's actually an array)
+        const myMessages = Array.isArray(currentBasket[username]) ? currentBasket[username] : [];
 
         // Check if message already exists
         const messageExists = myMessages.some(m => m.id === message.id);
         if (!messageExists) {
-          // Append to my array, preserve other users' data
-          const updatedBin: BinData = {
-            ...currentBin,
+          // Append to my array using merge update
+          const updateData: BasketData = {
             [username]: [...myMessages, message],
           };
 
-          // Save to jsonbin
-          const saved = await saveBin(updatedBin);
+          // Use PUT (merge) to update basket
+          const saved = await pantryService.updateBasket(updateData);
           if (!saved) {
             console.error('Failed to save messages');
             return;
@@ -183,13 +137,14 @@ export function useJsonBinChat(username: string) {
         }
 
         // Verify: read back and check if our message exists in our array
-        const verifyBin = await readBin();
-        if (!verifyBin) {
+        const verifyBasket = await pantryService.readBasket();
+        if (!verifyBasket) {
           console.error('Failed to verify message');
           return;
         }
 
-        const verified = (verifyBin[username] || []).some(m => m.id === message.id);
+        const verifyMessages = Array.isArray(verifyBasket[username]) ? verifyBasket[username] : [];
+        const verified = verifyMessages.some(m => m.id === message.id);
         if (verified) {
           // Success - polling will update display
           return;
@@ -203,7 +158,7 @@ export function useJsonBinChat(username: string) {
     } finally {
       setSending(false);
     }
-  }, [username, readBin, saveBin]);
+  }, [username]);
 
   const myColor = getColorForUsername(username);
 

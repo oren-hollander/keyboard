@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react';
+import {useState, useEffect, type Dispatch, type SetStateAction} from 'react';
 import { TextDisplay } from './components/TextDisplay';
 import { Keyboard } from './components/Keyboard';
 import { NameEntry } from './components/NameEntry';
-import { useJsonBinChat } from './hooks/useJsonBinChat';
 import './App.css';
+import {usePantryChat} from "./hooks/usePantryChat";
 
 const STORAGE_KEY = 'keyboard-chat-username';
 
@@ -20,7 +20,7 @@ function WritingRoom({
   onModeToggle,
 }: {
   writeState: WriteState;
-  setWriteState: React.Dispatch<React.SetStateAction<WriteState>>;
+  setWriteState: Dispatch<SetStateAction<WriteState>>;
   onModeToggle: () => void;
 }) {
   const { lines, currentLine } = writeState;
@@ -87,11 +87,11 @@ function ChatRoom({
   onModeToggle: () => void;
 }) {
   const [currentLine, setCurrentLine] = useState('');
-  const { messages, sendMessage, myColor, fetchMessages, sending } = useJsonBinChat(username);
+  const { messages, sendMessage, myColor, fetchMessages, sending } = usePantryChat(username);
 
   // Fetch messages immediately when entering chat mode
   useEffect(() => {
-    fetchMessages();
+    fetchMessages().then(() => {});
   }, [fetchMessages]);
 
   const handleKeyPress = (key: string) => {
@@ -111,10 +111,10 @@ function ChatRoom({
     }
   };
 
-  const handleEnter = () => {
+  const handleEnter = async () => {
     if (sending) return;
     if (currentLine.trim()) {
-      sendMessage(currentLine);
+      await sendMessage(currentLine);
       setCurrentLine('');
     }
   };
