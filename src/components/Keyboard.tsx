@@ -71,7 +71,7 @@ export function Keyboard({ onKeyPress, onBackspace, onEnter, onSpace, mode, onMo
             className={`key key-mode ${mode === 'write' ? 'mode-write' : 'mode-chat'}`}
             onClick={onModeToggle}
           >
-            {mode === 'write' ? '💬' : '📝'}
+            {mode === 'write' ? '💬' : '✏️'}
           </button>
         )}
         <button className="key key-space" onClick={onSpace}>

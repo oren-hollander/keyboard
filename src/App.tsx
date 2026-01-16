@@ -5,6 +5,7 @@ import { NameEntry } from './components/NameEntry';
 import { useJsonBinChat } from './hooks/useJsonBinChat';
 import './App.css';
 
+// pantry id: 5333342e-35ae-4f62-a399-3717dadb8a56
 const STORAGE_KEY = 'keyboard-chat-username';
 
 type AppState = 'write' | 'entering-chat' | 'chat';
