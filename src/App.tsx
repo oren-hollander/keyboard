@@ -3,7 +3,7 @@ import { TextDisplay } from './components/TextDisplay';
 import { Keyboard } from './components/Keyboard';
 import { NameEntry } from './components/NameEntry';
 import './App.css';
-import {usePantryChat} from "./hooks/usePantryChat";
+import {useSupabaseChat} from "./hooks/useSupabaseChat";
 
 const STORAGE_KEY = 'keyboard-chat-username';
 
@@ -87,7 +87,7 @@ function ChatRoom({
   onModeToggle: () => void;
 }) {
   const [currentLine, setCurrentLine] = useState('');
-  const { messages, sendMessage, myColor, fetchMessages, sending } = usePantryChat(username);
+  const { messages, sendMessage, myColor, fetchMessages, sending } = useSupabaseChat(username);
 
   // Fetch messages immediately when entering chat mode
   useEffect(() => {
